@@ -1,13 +1,20 @@
 import sqlite3
+import os # <-- Adicione esta linha no topo do arquivo
 
 DB_NAME = "financeiro_cache.db"
 
 def get_connection():
     conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = sqlite3.Row 
     return conn
 
 def init_db():
+    # -----------------------------------------------------
+    # ADICIONE ESTAS DUAS LINHAS AQUI (Apenas temporariamente)
+    if os.path.exists(DB_NAME):
+        os.remove(DB_NAME)
+    # -----------------------------------------------------
+        
     with get_connection() as conn:
         cursor = conn.cursor()
         # Cria as tabelas utilizando o DDL definido na Seção 3
