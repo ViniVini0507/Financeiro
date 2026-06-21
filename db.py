@@ -9,33 +9,50 @@ def get_connection():
     return conn
 
 def init_db():
-    # -----------------------------------------------------
-    # ADICIONE ESTAS DUAS LINHAS AQUI (Apenas temporariamente)
-    if os.path.exists(DB_NAME):
-        os.remove(DB_NAME)
-    # -----------------------------------------------------
-        
+    """Inicializa as tabelas no SQLite, forçando a limpeza de schemas antigos."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        # Cria as tabelas utilizando o DDL definido na Seção 3
+        
+        # 1. DESTRÓI AS TABELAS ANTIGAS SE ELAS EXISTIREM
+        cursor.execute("DROP TABLE IF EXISTS transactions;")
+        cursor.execute("DROP TABLE IF EXISTS categories;")
+        cursor.execute("DROP TABLE IF EXISTS accounts;")
+        
+        # 2. CRIA AS TABELAS COM AS COLUNAS ATUALIZADAS
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS accounts (
-            notion_id TEXT PRIMARY KEY, name TEXT NOT NULL, initial_balance REAL DEFAULT 0,
-            currency TEXT, type TEXT, due_day INTEGER, closing_day INTEGER, credit_limit REAL DEFAULT 0
+            notion_id TEXT PRIMARY KEY, 
+            name TEXT NOT NULL, 
+            initial_balance REAL DEFAULT 0,
+            type TEXT, 
+            due_day INTEGER, 
+            closing_day INTEGER, 
+            credit_limit REAL DEFAULT 0
         );""")
+        
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS categories (
-            notion_id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT, monthly_budget REAL DEFAULT 0
+            notion_id TEXT PRIMARY KEY, 
+            name TEXT NOT NULL, 
+            type TEXT, 
+            monthly_budget REAL DEFAULT 0
         );""")
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS invoices (
-            notion_id TEXT PRIMARY KEY, name TEXT NOT NULL, account_id TEXT,
-            reference_month TEXT, closing_date TEXT, due_date TEXT, status TEXT
-        );""")
+        
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
-            notion_id TEXT PRIMARY KEY, description TEXT NOT NULL, type TEXT,
-            purchase_date TEXT, effective_date TEXT, amount REAL, installments_count INTEGER,
-            movement_type TEXT, context TEXT, account_id TEXT, invoice_id TEXT
+            notion_id TEXT PRIMARY KEY, 
+            description TEXT NOT NULL, 
+            type TEXT,
+            purchase_date TEXT, 
+            effective_date TEXT, 
+            amount REAL, 
+            installments_count INTEGER,
+            movement_type TEXT, 
+            context TEXT, 
+            account_id TEXT, 
+            category_id TEXT,
+            FOREIGN KEY(account_id) REFERENCES accounts(notion_id),
+            FOREIGN KEY(category_id) REFERENCES categories(notion_id)
         );""")
+        
         conn.commit()
