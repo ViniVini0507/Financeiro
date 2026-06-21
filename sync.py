@@ -56,8 +56,12 @@ def run_sync():
         ctx = notion_api.extract_property(p, "Contexto", "select") or "Dia a dia"
         
         acc_id = notion_api.extract_property(p, "Contas", "relation")
-        cat_id = notion_api.extract_property(p, "Categorias e Orçamentos", "relation")
-
+        # Tenta extrair a relação usando os nomes mais comuns que você pode ter usado na coluna
+        cat_id = (
+            notion_api.extract_property(p, "Categorias e Orçamentos", "relation") or
+            notion_api.extract_property(p, "Categoria", "relation") or
+            notion_api.extract_property(p, "Categorias", "relation")
+        )
         cat_name = categorias_map.get(cat_id, "")
         if cat_name == "Transferência Interna":
             txtype = "Transferência"
