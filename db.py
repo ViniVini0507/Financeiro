@@ -12,12 +12,7 @@ def init_db():
     """Inicializa as tabelas no SQLite, forçando a limpeza de schemas antigos."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        
-        # 1. DESTRÓI AS TABELAS ANTIGAS SE ELAS EXISTIREM
-        cursor.execute("DROP TABLE IF EXISTS transactions;")
-        cursor.execute("DROP TABLE IF EXISTS categories;")
-        cursor.execute("DROP TABLE IF EXISTS accounts;")
-        
+               
         # 2. CRIA AS TABELAS COM AS COLUNAS ATUALIZADAS
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS accounts (
