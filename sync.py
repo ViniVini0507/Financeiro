@@ -5,38 +5,43 @@ import db
 import notion_client
 
 def run_sync():
-    db.init_db()
+    db.init_db() # Garante que o banco existe
     conn = db.get_connection()
     cursor = conn.cursor()
     
-    # 1. Sync Contas
+    # 1. Sync Categorias (Fazemos primeiro para podermos ler os nomes depois)
+    cat_pages = notion_client.fetch_database_pages(os.getenv("DB_CATEGORIAS_ID", ""))
+    categorias_map = {} # Cache em memória para olhar o nome da categoria rapidamente
+    
+    for p in cat_pages:
+        cid = p["id"]
+        cname = notion_client.extract_property(p, "Categoria", "title")
+        ctype = notion_client.extract_property(p, "Tipo", "select")
+        cbudget = notion_client.extract_property(p, "Orçamento Mensal", "number")
+        
+        categorias_map[cid] = cname
+        cursor.execute(
+            "INSERT OR REPLACE INTO categories VALUES (?, ?, ?, ?)", 
+            (cid, cname, ctype, cbudget)
+        )
+
+    # 2. Sync Contas
     account_pages = notion_client.fetch_database_pages(os.getenv("DB_CONTAS_ID", ""))
     for p in account_pages:
-        nid = p["id"]
-        name = notion_client.extract_property(p, "Conta", "title")
-        init_bal = notion_client.extract_property(p, "Saldo Inicial", "number")
-        curr = notion_client.extract_property(p, "Moeda Principal", "select") or "BRL"
-        tp = notion_client.extract_property(p, "Tipo", "select") or "Conta Corrente"
-        due = notion_client.extract_property(p, "Dia do vencimento", "number")
-        close = notion_client.extract_property(p, "Dia do fechamento", "number")
-        lim = notion_client.extract_property(p, "Limite", "number")
-        
         cursor.execute("""
-            INSERT OR REPLACE INTO accounts (notion_id, name, initial_balance, currency, type, due_day, closing_day, credit_limit)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (nid, name, init_bal, curr, tp, due, close, lim))
-        
-    # 2. Sync Categorias
-    cat_pages = notion_client.fetch_database_pages(os.getenv("DB_CATEGORIAS_ID", ""))
-    for p in cat_pages:
-        cursor.execute("INSERT OR REPLACE INTO categories VALUES (?, ?, ?, ?)", (
+            INSERT OR REPLACE INTO accounts (notion_id, name, initial_balance, type, due_day, closing_day, credit_limit)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
             p["id"],
-            notion_client.extract_property(p, "Categoria", "title"),
-            notion_client.extract_property(p, "Tipo", "select"),
-            notion_client.extract_property(p, "Orçamento Mensal", "number")
+            notion_client.extract_property(p, "Conta", "title"),
+            notion_client.extract_property(p, "Saldo Inicial", "number"),
+            notion_client.extract_property(p, "Tipo", "select") or "Conta Corrente",
+            notion_client.extract_property(p, "Dia do vencimento", "number"),
+            notion_client.extract_property(p, "Dia do fechamento", "number"),
+            notion_client.extract_property(p, "Limite", "number")
         ))
-
-    # 3. Sync Transações (Com expansão de parcelas nativa em memória de cache)
+        
+    # 3. Sync Transações (Com regras de parcelas e transferências)
     tx_pages = notion_client.fetch_database_pages(os.getenv("DB_TRANSACOES_ID", ""))
     for p in tx_pages:
         nid = p["id"]
@@ -49,10 +54,16 @@ def run_sync():
         gen_inst = notion_client.extract_property(p, "Gerar Parcelas", "checkbox")
         mov = notion_client.extract_property(p, "Movimento", "select") or "Compra"
         ctx = notion_client.extract_property(p, "Contexto", "select") or "Dia a dia"
+        
         acc_id = notion_client.extract_property(p, "Contas", "relation")
-        inv_id = notion_client.extract_property(p, "Faturas", "relation")
+        cat_id = notion_client.extract_property(p, "Categorias e Orçamentos", "relation")
 
-        # Buscar dados de fechamento da conta para a competência
+        # REGRA 2: Transformar 'Transferência Interna' fisicamente no banco
+        cat_name = categorias_map.get(cat_id, "")
+        if cat_name == "Transferência Interna":
+            txtype = "Transferência"
+
+        # Buscar dia de fechamento para a competência
         cursor.execute("SELECT closing_day FROM accounts WHERE notion_id = ?", (acc_id,))
         acc_row = cursor.fetchone()
         closing_day = acc_row["closing_day"] if acc_row else None
@@ -61,7 +72,8 @@ def run_sync():
         loops = inst_count if gen_inst else 1
         for i in range(loops):
             current_p_date = p_date + relativedelta(months=i)
-            # Calcular competência efetiva (Regra 4.1)
+            
+            # Cálculo de competência
             if closing_day and current_p_date.day >= closing_day:
                 eff_date = (current_p_date + relativedelta(months=1)).replace(day=1)
             else:
@@ -71,9 +83,10 @@ def run_sync():
             display_desc = f"{desc} ({i+1}/{inst_count})" if i > 0 else desc
             
             cursor.execute("""
-                INSERT OR REPLACE INTO transactions (notion_id, description, type, purchase_date, effective_date, amount, installments_count, movement_type, context, account_id, invoice_id)
+                INSERT OR REPLACE INTO transactions 
+                (notion_id, description, type, purchase_date, effective_date, amount, installments_count, movement_type, context, account_id, category_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (unique_id, display_desc, txtype, current_p_date.strftime("%Y-%m-%d"), eff_date.strftime("%Y-%m-%d"), amt/loops if gen_inst else amt, inst_count, mov, ctx, acc_id, inv_id))
+            """, (unique_id, display_desc, txtype, current_p_date.strftime("%Y-%m-%d"), eff_date.strftime("%Y-%m-%d"), amt/loops if gen_inst else amt, inst_count, mov, ctx, acc_id, cat_id))
 
     conn.commit()
     conn.close()

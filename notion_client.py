@@ -1,63 +1,55 @@
-import os
-import requests
-import logging
+import sqlite3
 
-NOTION_TOKEN = os.getenv("NOTION_TOKEN")
-HEADERS = {
-    "Authorization": f"Bearer {NOTION_TOKEN}",
-    "Notion-Version": "2022-06-28",
-    "Content-Type": "application/json"
-}
+DB_NAME = "financeiro_cache.db"
 
-def fetch_database_pages(database_id: str) -> list:
-    """Busca todas as páginas de um banco de dados do Notion tratando paginação."""
-    url = f"https://api.notion.com/v1/databases/{database_id}/query"
-    pages = []
-    has_more = True
-    start_cursor = None
-    
-    if not NOTION_TOKEN:
-        logging.error("NOTION_TOKEN não configurada!")
-        return []
+def get_connection():
+    conn = sqlite3.connect(DB_NAME)
+    # Permite acessar as colunas pelo nome (ex: row['amount'])
+    conn.row_factory = sqlite3.Row 
+    return conn
 
-    while has_more:
-        payload = {}
-        if start_cursor:
-            payload["start_cursor"] = start_cursor
-            
-        try:
-            response = requests.post(url, json=payload, headers=HEADERS, timeout=15)
-            if response.status_with == 429:
-                import time
-                time.sleep(1) # Rate limiting simples
-                continue
-            response.raise_for_status()
-            data = response.json()
-            pages.extend(data.get("results", []))
-            has_more = data.get("has_more", False)
-            start_cursor = data.get("next_cursor", None)
-        except Exception as e:
-            logging.error(f"Erro ao buscar dados do database {database_id}: {e}")
-            break
-            
-    return pages
-
-def extract_property(page_data: dict, prop_name: str, prop_type: str):
-    """Extração utilitária de propriedades brutas do json do Notion."""
-    props = page_data.get("properties", {})
-    prop = props.get(prop_name, {})
-    
-    if prop_type == "title" and prop.get("title"):
-        return prop["title"][0]["plain_text"] if prop["title"] else "Sem Título"
-    elif prop_type == "number":
-        return prop.get("number", 0.0) or 0.0
-    elif prop_type == "select" and prop.get("select"):
-        return prop["select"]["name"]
-    elif prop_type == "checkbox":
-        return prop.get("checkbox", False)
-    elif prop_type == "date" and prop.get("date"):
-        return prop["date"]["start"]
-    elif prop_type == "relation" and prop.get("relation"):
-        relations = prop["relation"]
-        return relations[0]["id"] if relations else None
-    return None
+def init_db():
+    """Inicializa as tabelas no SQLite. Este é o seu Schema SQL físico."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Tabela de Contas
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS accounts (
+            notion_id TEXT PRIMARY KEY, 
+            name TEXT NOT NULL, 
+            initial_balance REAL DEFAULT 0,
+            type TEXT, 
+            due_day INTEGER, 
+            closing_day INTEGER, 
+            credit_limit REAL DEFAULT 0
+        );""")
+        
+        # Tabela de Categorias
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS categories (
+            notion_id TEXT PRIMARY KEY, 
+            name TEXT NOT NULL, 
+            type TEXT, 
+            monthly_budget REAL DEFAULT 0
+        );""")
+        
+        # Tabela de Transações
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS transactions (
+            notion_id TEXT PRIMARY KEY, 
+            description TEXT NOT NULL, 
+            type TEXT,
+            purchase_date TEXT, 
+            effective_date TEXT, 
+            amount REAL, 
+            installments_count INTEGER,
+            movement_type TEXT, 
+            context TEXT, 
+            account_id TEXT, 
+            category_id TEXT,
+            FOREIGN KEY(account_id) REFERENCES accounts(notion_id),
+            FOREIGN KEY(category_id) REFERENCES categories(notion_id)
+        );""")
+        
+        conn.commit()
