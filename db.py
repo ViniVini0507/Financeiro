@@ -47,7 +47,12 @@ def init_db():
             account_id TEXT, 
             category_id TEXT,
             FOREIGN KEY(account_id) REFERENCES accounts(notion_id),
-            FOREIGN KEY(category_id) REFERENCES categories(notion_id)
+            FOREIGN KEY(category_id) REFERENCES categories(notion_id),
+            month TEXT PRIMARY KEY,
+            total_income REAL,
+            total_expense REAL,
+            net_balance REAL,
+            closed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );""")
         
         conn.commit()
