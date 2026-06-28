@@ -153,11 +153,19 @@ with tab_dash:
     with col_g1:
         if not df_pie.empty:
             total_gasto_str = f"R$ {df_pie['amount'].sum():,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            # Criação do gráfico com as variáveis mapeadas corretamente
             fig_pie = px.pie(
                 df_pie, names='category_name', values='amount', hole=0.75,
-                color_discrete_sequence=px.colors.qualitative.Bold
+                color_discrete_sequence=px.colors.qualitative.Bold,
+                labels={'category_name': 'Categoria', 'amount': 'Total'}
             )
-            fig_pie.update_traces(textposition='outside', textinfo='percent+label', textfont_size=13)
+            # Limpeza do Tooltip (Hover) e das fatias externas
+            fig_pie.update_traces(
+                textposition='outside', 
+                textinfo='percent+label', 
+                textfont_size=13,
+                hovertemplate="<b>%{label}</b><br>Gasto: R$ %{value:,.2f}<br>Fatia: %{percent}<extra></extra>"
+            )
             fig_pie.update_layout(
                 showlegend=False, 
                 margin=dict(t=20, b=20, l=20, r=20),
@@ -194,7 +202,8 @@ with tab_dash:
             df_orc = df_orc[df_orc['monthly_budget'] > 0].copy()
             
             if not df_orc.empty:
-                df_orc['progresso'] = df_orc['amount'] / df_orc['monthly_budget']
+                # Calcula o progresso e trava visualmente em 1.0 (100%) para não quebrar a UI
+                df_orc['progresso'] = (df_orc['amount'] / df_orc['monthly_budget']).clip(upper=1.0)
                 view_orc = df_orc[['name', 'monthly_budget', 'amount', 'progresso']].copy()
                 
                 st.dataframe(
@@ -326,4 +335,3 @@ with tab_fpa:
             st.plotly_chart(fig_fpa, use_container_width=True)
         else:
             st.warning("Não há dados futuros ou parcelas lançadas para gerar o forecast.")
-            
