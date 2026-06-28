@@ -1,5 +1,4 @@
 import sqlite3
-import os # <-- Adicione esta linha no topo do arquivo
 
 DB_NAME = "financeiro_cache.db"
 
@@ -9,11 +8,11 @@ def get_connection():
     return conn
 
 def init_db():
-    """Inicializa as tabelas no SQLite, forçando a limpeza de schemas antigos."""
+    """Inicializa as tabelas no SQLite, garantindo a modelagem correta."""
     with get_connection() as conn:
         cursor = conn.cursor()
                
-        # 2. CRIA AS TABELAS COM AS COLUNAS ATUALIZADAS
+        # 1. TABELA DE CONTAS
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS accounts (
             notion_id TEXT PRIMARY KEY, 
@@ -25,6 +24,7 @@ def init_db():
             credit_limit REAL DEFAULT 0
         );""")
         
+        # 2. TABELA DE CATEGORIAS
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS categories (
             notion_id TEXT PRIMARY KEY, 
@@ -33,6 +33,7 @@ def init_db():
             monthly_budget REAL DEFAULT 0
         );""")
         
+        # 3. TABELA DE TRANSAÇÕES (Corrigida)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             notion_id TEXT PRIMARY KEY, 
@@ -47,7 +48,12 @@ def init_db():
             account_id TEXT, 
             category_id TEXT,
             FOREIGN KEY(account_id) REFERENCES accounts(notion_id),
-            FOREIGN KEY(category_id) REFERENCES categories(notion_id),
+            FOREIGN KEY(category_id) REFERENCES categories(notion_id)
+        );""")
+
+        # 4. TABELA DE SNAPSHOTS / FP&A (Agora isolada corretamente)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS monthly_snapshots (
             month TEXT PRIMARY KEY,
             total_income REAL,
             total_expense REAL,
@@ -56,3 +62,4 @@ def init_db():
         );""")
         
         conn.commit()
+        
