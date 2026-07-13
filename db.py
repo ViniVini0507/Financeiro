@@ -60,6 +60,18 @@ def init_db():
             net_balance REAL,
             closed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );""")
+
+        # 5. TABELA DE PLANEJAMENTO CONJUNTO (FP&A)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fpa_planning (
+            notion_id TEXT PRIMARY KEY,
+            item TEXT NOT NULL,
+            data_prevista TEXT,
+            valor REAL,
+            status TEXT,
+            tipo_movimento TEXT,
+            tipo_transacao TEXT
+        );""")
         
         conn.commit()
         

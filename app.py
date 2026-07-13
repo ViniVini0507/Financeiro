@@ -239,99 +239,78 @@ with tab_dash:
         )
 
 with tab_fpa:
-    st.markdown("### 🔮 Projeção de Fluxo de Caixa & What-If")
-    st.markdown("Simule o impacto de compras futuras e projete seu caixa considerando as parcelas já assumidas no Notion.")
+    st.markdown("### 🔮 Projeção de Fluxo de Caixa (O Fim do Excel)")
+    st.markdown("Visão automática baseada na base 'Planejamento Conjunto' do Notion.")
     st.divider()
-    
-    col_sim, col_chart = st.columns([1, 2])
-    
-    with col_sim:
-        st.markdown("#### 🛒 Simulador de Compra (What-If)")
-        with st.form("what_if_form"):
-            sim_desc = st.text_input("Descrição do Gasto (Ex: Intercâmbio, Computador)")
-            sim_val = st.number_input("Valor Total (R$)", min_value=0.0, step=100.0)
-            sim_parc = st.number_input("Quantidade de Parcelas", min_value=1, max_value=48, value=1)
-            sim_start = st.date_input("Data da 1ª Parcela")
-            
-            submit_sim = st.form_submit_button("Simular Impacto no Caixa", use_container_width=True)
-            
-        st.markdown("#### 🔒 Fechamento Contábil")
-        st.caption("Salva o balanço consolidado do mês selecionado nos filtros globais, tornando-o imutável.")
-        if st.button(f"Gravar Snapshot de {selected_month}", use_container_width=True):
-            conn = db.get_connection()
-            conn.cursor().execute("""
-                INSERT OR REPLACE INTO monthly_snapshots (month, total_income, total_expense, net_balance)
-                VALUES (?, ?, ?, ?)
-            """, (selected_month, float(receitas_globais), float(despesas_globais), float(saldo_liquido_global)))
-            conn.commit()
-            conn.close()
-            st.success(f"Snapshot de {selected_month} gravado com sucesso! Saldo Líquido travado em R$ {saldo_liquido_global:,.2f}.")
 
-    with col_chart:
-        st.markdown("#### 📈 Forecast (Próximos 6 Meses)")
-        # 1. Pega todas as transações (Base Real)
-        df_forecast = df_tx[df_tx['type'] != 'Transferência'].copy()
-        
-        # 2. Injeta os dados da Simulação
-        if submit_sim and sim_val > 0:
-            sim_records = []
-            valor_parcela = sim_val / sim_parc
-            for i in range(sim_parc):
-                data_parc = pd.to_datetime(sim_start) + pd.DateOffset(months=i)
-                mes_efetivo = data_parc.strftime("%Y-%m")
-                sim_records.append({
-                    'effective_month': mes_efetivo,
-                    'amount': valor_parcela,
-                    'type': 'Despesa',
-                    'category_name': 'Simulação (What-If)'
-                })
-            df_sim = pd.DataFrame(sim_records)
-            df_forecast = pd.concat([df_forecast, df_sim], ignore_index=True)
-            st.info(f"Visualizando impacto de **{sim_desc}** (R$ {sim_val:,.2f} em {sim_parc}x).")
-        
-        # 3. Agrega Receitas e Despesas por Mês
-        agora = pd.to_datetime('today').strftime("%Y-%m")
-        df_future = df_forecast[df_forecast['effective_month'] >= agora].copy()
-        
-        if not df_future.empty:
-            agg_future = df_future.groupby(['effective_month', 'type'])['amount'].sum().reset_index()
-            pivot_future = agg_future.pivot(index='effective_month', columns='type', values='amount').fillna(0).reset_index()
-            
-            for col in ['Receita', 'Despesa']:
-                if col not in pivot_future.columns:
-                    pivot_future[col] = 0.0
-                    
-            pivot_future['Resultado Líquido'] = pivot_future['Receita'] - pivot_future['Despesa']
-            pivot_future = pivot_future.sort_values('effective_month').head(6) # Limita a 6 meses
+    # 1. Puxar os dados da nova tabela
+    conn = db.get_connection()
+    df_fpa = pd.read_sql_query("SELECT * FROM fpa_planning", conn)
+    conn.close()
 
-            # 4. Renderização
-            fig_fpa = px.bar(
-                pivot_future, 
-                x='effective_month', 
-                y=['Receita', 'Despesa'],
-                barmode='group',
-                color_discrete_map={'Receita': '#2ecc71', 'Despesa': '#e74c3c'},
-                labels={'value': 'Valor (R$)', 'effective_month': 'Competência', 'variable': 'Operação'}
-            )
+    if df_fpa.empty:
+        st.info("Sincronize o Notion para carregar o seu Planejamento Conjunto.")
+    else:
+        # 2. Tratamento Matemático e de Tempo
+        df_fpa['Data'] = pd.to_datetime(df_fpa['data_prevista']).dt.date
+        df_fpa['Mês_Idx'] = pd.to_datetime(df_fpa['data_prevista']).dt.to_period('M')
+        df_fpa['Mês_Label'] = df_fpa['Mês_Idx'].dt.strftime('%b/%Y')
+
+        # Blindagem Matemática: Garante que toda 'Despesa' seja negativa no cálculo
+        df_fpa['Valor Ajustado'] = df_fpa.apply(
+            lambda x: -abs(x['valor']) if x['tipo_transacao'] == 'Despesa' else abs(x['valor']), axis=1
+        )
+
+        col_input, col_space = st.columns([1, 3])
+        with col_input:
+            # Você insere o saldo que tem no banco hoje para a cascata começar certa
+            saldo_inicial_base = st.number_input("Saldo em Caixa Atual (R$)", value=4000.0, step=100.0)
+
+        # 3. Lógica em Cascata (O motor do Saldo Acumulado)
+        meses_ordenados = sorted(df_fpa['Mês_Idx'].unique())
+        saldo_atual = saldo_inicial_base
+        
+        cascata_dados = []
+        for mes in meses_ordenados:
+            df_mes = df_fpa[df_fpa['Mês_Idx'] == mes]
+            entradas = df_mes[df_mes['tipo_transacao'] == 'Receita']['Valor Ajustado'].sum()
+            saidas = df_mes[df_mes['tipo_transacao'] == 'Despesa']['Valor Ajustado'].sum()
+            geracao = entradas + saidas
+            saldo_final = saldo_atual + geracao
             
-            fig_fpa.add_scatter(
-                x=pivot_future['effective_month'], 
-                y=pivot_future['Resultado Líquido'],
-                mode='lines+markers+text',
-                name='Resultado Líquido',
-                text=pivot_future['Resultado Líquido'].apply(lambda x: f"R$ {x:,.0f}".replace(",", ".")),
-                textposition="top center",
-                line=dict(color='#f1c40f', width=3),
-                marker=dict(size=8)
-            )
-            
-            fig_fpa.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", 
-                plot_bgcolor="rgba(0,0,0,0)",
-                xaxis_title="",
-                legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-                margin=dict(t=10, b=0, l=0, r=0)
-            )
-            st.plotly_chart(fig_fpa, use_container_width=True)
-        else:
-            st.warning("Não há dados futuros ou parcelas lançadas para gerar o forecast.")
+            cascata_dados.append({
+                'Mês': mes.strftime('%b/%Y'),
+                '1. Saldo Inicial': saldo_atual,
+                '2. Entradas': entradas,
+                '3. Saídas': saidas,
+                '4. Geração de Caixa': geracao,
+                '5. Saldo Final': saldo_final
+            })
+            saldo_atual = saldo_final # Empurra o saldo para o mês seguinte
+
+        df_cascata = pd.DataFrame(cascata_dados).set_index('Mês').T
+
+        # 4. Renderização do Fechamento (O bloco inferior do seu Excel)
+        st.markdown("#### 🎯 Fechamento Consolidado (Caixa)")
+        st.dataframe(df_cascata.style.format("R$ {:,.2f}"), use_container_width=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # 5. Renderização do Detalhe (O bloco superior do seu Excel)
+        st.markdown("#### 📋 Detalhamento Previsto (Entradas e Saídas)")
+        
+        # Cria a Pivot Table (Tabela Dinâmica) igualzinha ao seu Excel
+        pivot_fpa = pd.pivot_table(
+            df_fpa,
+            values='Valor Ajustado',
+            index=['tipo_transacao', 'tipo_movimento', 'item'],
+            columns='Mês_Label',
+            aggfunc='sum',
+            fill_value=0
+        )
+        
+        # Ordena as colunas cronologicamente
+        colunas_ordenadas = [m.strftime('%b/%Y') for m in meses_ordenados]
+        pivot_fpa = pivot_fpa.reindex(columns=colunas_ordenadas)
+        
+        st.dataframe(pivot_fpa.style.format("R$ {:,.2f}"), use_container_width=True)
