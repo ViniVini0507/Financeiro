@@ -4,6 +4,9 @@ import plotly.express as px
 import db
 import sync
 
+# Garante a existência do banco e de todas as tabelas (incluindo fpa_planning) logo na abertura do app
+db.init_db()
+
 # --- 1. CONFIGURAÇÃO PREMIUM (Estilo Notion Dark Mode) ---
 st.set_page_config(layout="wide", page_title="Financeiro", page_icon="💰")
 
@@ -239,12 +242,25 @@ with tab_dash:
         )
 
 with tab_fpa:
-    st.markdown("### 🔮 Projeção de Fluxo de Caixa (O Fim do Excel)")
+    st.markdown("### 🔮 Projeção de Fluxo de Caixa")
     st.markdown("Visão automática baseada na base 'Planejamento Conjunto' do Notion.")
     st.divider()
 
-    # 1. Puxar os dados da nova tabela
+    # 1. Conexão e Blindagem (Garante que a tabela existe antes do Pandas ler)
     conn = db.get_connection()
+    conn.cursor().execute("""
+    CREATE TABLE IF NOT EXISTS fpa_planning (
+        notion_id TEXT PRIMARY KEY,
+        item TEXT NOT NULL,
+        data_prevista TEXT,
+        valor REAL,
+        status TEXT,
+        tipo_movimento TEXT,
+        tipo_transacao TEXT
+    );""")
+    conn.commit()
+
+    # Agora sim o Pandas pode ler com segurança
     df_fpa = pd.read_sql_query("SELECT * FROM fpa_planning", conn)
     conn.close()
 
