@@ -62,7 +62,7 @@ conn.close()
 
 with st.sidebar:
     st.title("⚙️ Controle")
-    if st.button("🔄 Sincronizar Notion", use_container_width=True):
+    if st.button("🔄 Sincronizar Notion", width="stretch"=True):
         with st.spinner("Sincronizando com a fonte da verdade..."):
             sync.run_sync()
             st.success("Dados Atualizados!")
@@ -176,7 +176,7 @@ with tab_dash:
                 plot_bgcolor="rgba(0,0,0,0)",
                 annotations=[dict(text=f"<b>{total_gasto_str}</b>", x=0.5, y=0.5, font_size=24, font_color="white", showarrow=False)]
             )
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, width="stretch"=True)
         else:
             st.info("Nenhuma despesa para consolidar neste mês.")
 
@@ -188,7 +188,7 @@ with tab_dash:
                     "category_name": st.column_config.TextColumn("Categoria"),
                     "amount": st.column_config.NumberColumn("Total", format="R$ %.2f")
                 },
-                hide_index=True, use_container_width=True
+                hide_index=True, width="stretch"=True
             )
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -217,7 +217,7 @@ with tab_dash:
                         "amount": st.column_config.NumberColumn("Σ Gastos", format="R$ %.2f"),
                         "progresso": st.column_config.ProgressColumn("Σ Progresso", format="%.0%", min_value=0, max_value=1.0)
                     },
-                    hide_index=True, use_container_width=True
+                    hide_index=True, width="stretch"=True
                 )
             else:
                 st.info("Nenhum orçamento configurado.")
@@ -238,7 +238,7 @@ with tab_dash:
                 "amount": st.column_config.NumberColumn("# Valor", format="R$ %.2f"),
                 "account_id": st.column_config.TextColumn("Conta")
             },
-            hide_index=True, use_container_width=True
+            hide_index=True, width="stretch"=True
         )
 
 with tab_fpa:
@@ -308,7 +308,7 @@ with tab_fpa:
 
         # 4. Renderização do Fechamento (O bloco inferior do seu Excel)
         st.markdown("#### 🎯 Fechamento Consolidado (Caixa)")
-        st.dataframe(df_cascata.style.format("R$ {:,.2f}"), use_container_width=True)
+        st.dataframe(df_cascata.style.format("R$ {:,.2f}"), width="stretch"=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -329,4 +329,4 @@ with tab_fpa:
         colunas_ordenadas = [m.strftime('%b/%Y') for m in meses_ordenados]
         pivot_fpa = pivot_fpa.reindex(columns=colunas_ordenadas)
         
-        st.dataframe(pivot_fpa.style.format("R$ {:,.2f}"), use_container_width=True)
+        st.dataframe(pivot_fpa.style.format("R$ {:,.2f}"), width="stretch"=True)
