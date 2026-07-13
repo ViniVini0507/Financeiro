@@ -88,7 +88,7 @@ def run_sync():
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (unique_id, display_desc, txtype, current_p_date.strftime("%Y-%m-%d"), eff_date.strftime("%Y-%m-%d"), amt/loops if gen_inst else amt, inst_count, mov, ctx, acc_id, cat_id))
 
-        # 4. Sync Planejamento Conjunto (FP&A)
+    # 4. Sync Planejamento Conjunto (FP&A)
     fpa_pages = notion_api.fetch_database_pages(os.getenv("DB_FPA_ID", ""))
     for p in fpa_pages:
         # Extrai o nome primeiro para validar a linha
