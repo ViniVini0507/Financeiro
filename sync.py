@@ -88,22 +88,29 @@ def run_sync():
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (unique_id, display_desc, txtype, current_p_date.strftime("%Y-%m-%d"), eff_date.strftime("%Y-%m-%d"), amt/loops if gen_inst else amt, inst_count, mov, ctx, acc_id, cat_id))
 
-        # 4. Sync Planejamento Conjunto
-        fpa_pages = notion_api.fetch_database_pages(os.getenv("DB_FPA_ID", ""))
-        for p in fpa_pages:
-            cursor.execute("""
-                INSERT OR REPLACE INTO fpa_planning 
-                (notion_id, item, data_prevista, valor, status, tipo_movimento, tipo_transacao)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                p["id"],
-                notion_api.extract_property(p, "Item", "title"),
-                notion_api.extract_property(p, "Data Prevista", "date") or datetime.now().strftime("%Y-%m-%d"),
-                notion_api.extract_property(p, "Valor", "number") or 0.0,
-                notion_api.extract_property(p, "Status", "select") or "Pendente",
-                notion_api.extract_property(p, "Tipo de Movimento", "select") or "-",
-                notion_api.extract_property(p, "Tipo de Transação", "select") or "Despesa"
-            ))
+        # 4. Sync Planejamento Conjunto (FP&A)
+    fpa_pages = notion_api.fetch_database_pages(os.getenv("DB_FPA_ID", ""))
+    for p in fpa_pages:
+        # Extrai o nome primeiro para validar a linha
+        item_name = notion_api.extract_property(p, "Item", "title")
+        
+        # Leitura Correta: Se a linha for apenas um espaço em branco no Notion, o app ignora
+        if not item_name:
+            continue
+
+        cursor.execute("""
+            INSERT OR REPLACE INTO fpa_planning 
+            (notion_id, item, data_prevista, valor, status, tipo_movimento, tipo_transacao)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            p["id"],
+            item_name,
+            notion_api.extract_property(p, "Data Prevista", "date") or datetime.now().strftime("%Y-%m-%d"),
+            notion_api.extract_property(p, "Valor", "number") or 0.0,
+            notion_api.extract_property(p, "Status", "select") or "Pendente",
+            notion_api.extract_property(p, "Tipo de Movimento", "select") or "-",
+            notion_api.extract_property(p, "Tipo de Transação", "select") or "Despesa"
+        ))
 
     conn.commit()
     conn.close()
